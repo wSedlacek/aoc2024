@@ -4,139 +4,67 @@ import Foundation
 protocol SafetyRule {
   func evaluate(current: Int, previous: Int?) -> Bool
   func reset()
-  func snapshot() -> Any
-  func restore(from snapshot: Any)
 }
 
 // MARK: - TrendRule
-// Ensures the sequence is strictly increasing or strictly decreasing once established.
-class TrendRule: SafetyRule {
-  private var trend: Int?  // +1 for increasing, -1 for decreasing
+final class TrendRule: SafetyRule {
+  private var trend: Int?
 
   func evaluate(current: Int, previous: Int?) -> Bool {
     guard let previous = previous else { return true }
 
     if trend == nil {
-      if current > previous {
-        trend = 1
-      } else if current < previous {
-        trend = -1
-      } else {
-        // Equal values are not allowed for the trend
-        return false
-      }
+      trend = (current > previous) ? 1 : (current < previous ? -1 : nil)
     }
 
-    if let t = trend {
-      // If trend is increasing, we must never go down.
-      // If trend is decreasing, we must never go up.
-      if (t == 1 && current <= previous) || (t == -1 && current >= previous) {
-        return false
-      }
-    }
-    return true
+    guard let t = trend else { return false }
+    return (t == 1 && current > previous) || (t == -1 && current < previous)
   }
 
   func reset() {
     trend = nil
   }
-
-  func snapshot() -> Any {
-    return trend as Any
-  }
-
-  func restore(from snapshot: Any) {
-    trend = snapshot as? Int
-  }
 }
 
 // MARK: - DifferenceRule
-// Ensures differences between consecutive levels are in [1, 3].
-class DifferenceRule: SafetyRule {
+final class DifferenceRule: SafetyRule {
   func evaluate(current: Int, previous: Int?) -> Bool {
     guard let previous = previous else { return true }
     let diff = abs(current - previous)
-    return diff >= 1 && diff <= 3
+    return (1...3).contains(diff)
   }
 
   func reset() {}
-  func snapshot() -> Any { return () }
-  func restore(from snapshot: Any) {}
 }
 
 // MARK: - SafetySystems Protocol
-// Something that can be evaluated by SafetyRules.
 protocol SafetySystems {
   var levels: [Int] { get }
-  var rules: [SafetyRule] { get set }
+  var rules: [SafetyRule] { get }
 
-  mutating func setupRules()
   func isSafe() -> Bool
   func isSafe(dampen: Bool) -> Bool
 }
 
-// MARK: - Default Implementations for SafetySystems
 extension SafetySystems {
-  mutating func setupRules() {
-    // Initialize fresh rules
-    rules = [TrendRule(), DifferenceRule()]
-  }
-
   func isSafe() -> Bool {
-    return evaluateWithoutDampener()
+    RuleEvaluator(rules: rules).evaluate(levels: levels)
   }
 
   func isSafe(dampen: Bool) -> Bool {
-    guard dampen else {
-      return isSafe()
-    }
+    guard dampen else { return isSafe() }
+    if isSafe() { return true }
 
-    // If already safe, no need to remove anything
-    if isSafe() {
-      return true
-    }
-
-    // Brute force approach: try removing each level and test again
-    for i in 0..<levels.count {
-      let modifiedLevels = Array(levels[..<i]) + Array(levels[(i + 1)...])
-      var modifiedReport = Report(levels: modifiedLevels)
-      modifiedReport.setupRules()
-      if modifiedReport.isSafe() {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  private func evaluateWithoutDampener() -> Bool {
-    // Use a RuleEvaluator to keep logic clean
-    let evaluator = RuleEvaluator(rules: rules.map { cloneRule($0) })
-    return evaluator.evaluate(levels: levels)
-  }
-
-  // Helper to clone rules. Since these are class-based, we can reset them instead of truly cloning.
-  // For testing and safety, we can create new instances. Here we rely on reset().
-  private func cloneRule(_ rule: SafetyRule) -> SafetyRule {
-    // If we had more complicated logic, we might need a real clone. Here we just reset a new instance:
-    switch rule {
-    case is TrendRule:
-      let r = TrendRule()
-      return r
-    case is DifferenceRule:
-      let r = DifferenceRule()
-      return r
-    default:
-      // If more rules added, handle cloning them here.
-      fatalError("Unknown rule type!")
+    return levels.indices.contains { index in
+      let modifiedLevels = levels.removing(at: index)
+      return RuleEvaluator(rules: rules).evaluate(levels: modifiedLevels)
     }
   }
 }
 
 // MARK: - RuleEvaluator
-// Evaluates a list of rules on a sequence of levels without a dampener.
 struct RuleEvaluator {
-  var rules: [SafetyRule]
+  private var rules: [SafetyRule]
 
   init(rules: [SafetyRule]) {
     self.rules = rules
@@ -159,41 +87,36 @@ struct RuleEvaluator {
 struct Report: SafetySystems, Collection {
   static func parse(_ input: String) -> [Report] {
     input.split(separator: "\n").map { line in
-      let nums = line.split(separator: " ").compactMap { Int($0) }
-      var report = Report(levels: nums)
-      report.setupRules()
-      return report
+      let levels = line.split(separator: " ").compactMap { Int($0) }
+      return Report(levels: levels)
     }
   }
 
   let levels: [Int]
-  var rules: [SafetyRule] = []
+  var rules: [SafetyRule] = [TrendRule(), DifferenceRule()]
 
+  // Collection conformance
   typealias Index = Int
-  var startIndex: Int { return levels.startIndex }
-  var endIndex: Int { return levels.endIndex }
+  var startIndex: Int { levels.startIndex }
+  var endIndex: Int { levels.endIndex }
+  func index(after index: Int) -> Int { levels.index(after: index) }
+  subscript(position: Int) -> Int { levels[position] }
+}
 
-  func index(after index: Int) -> Int {
-    return levels.index(after: index)
+// MARK: - Utilities
+extension Array {
+  func removing(at index: Int) -> [Element] {
+    var copy = self
+    copy.remove(at: index)
+    return copy
   }
-
-  subscript(position: Int) -> Int {
-    return levels[position]
-  }
-
-  mutating func setupRules() {
-    rules = [TrendRule(), DifferenceRule()]
-  }
-
 }
 
 // MARK: - Entry Points
 func part1(_ input: String) -> Int {
-  let reports = Report.parse(input)
-  return reports.count { $0.isSafe() }
+  Report.parse(input).count { $0.isSafe() }
 }
 
 func part2(_ input: String) -> Int {
-  let reports = Report.parse(input)
-  return reports.count { $0.isSafe(dampen: true) }
+  Report.parse(input).count { $0.isSafe(dampen: true) }
 }
