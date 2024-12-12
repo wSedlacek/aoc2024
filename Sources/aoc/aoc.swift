@@ -1,65 +1,80 @@
-func parseInput(input: String) -> ([Int], [Int]) {
-  // There are two lists of location ids
-  // Each list is a column in the input
-  // Each column as two spaces separated numbers
+// MARK: - Core Struct
+struct LocationList {
+  var locationIDs: [Int]
 
-  let lines = input.split(separator: "\n")
-  var list1: [Int] = []
-  var list2: [Int] = []
+  static func pair(input: String) throws(ParsingError) -> (LocationList, LocationList) {
+    let lines = input.split(separator: "\n")
+    var list1: [Int] = []
+    var list2: [Int] = []
 
-  for line in lines {
-    let columns = line.split(separator: " ")
-    let column1 = Int(columns[0])!
-    let column2 = Int(columns[1])!
+    for line in lines {
+      let columns = line.split(separator: " ")
 
-    list1.append(column1)
-    list2.append(column2)
+      guard columns.count == 2,
+        let column1 = Int(columns[0]),
+        let column2 = Int(columns[1])
+      else {
+        throw ParsingError.invalidInput
+      }
+
+      list1.append(column1)
+      list2.append(column2)
+    }
+
+    return (LocationList(locationIDs: list1), LocationList(locationIDs: list2))
   }
 
-  return (list1, list2)
-}
-
-func reconcileList(list1: [Int], list2: [Int]) -> [(Int, Int)] {
-  let sortedList1 = list1.sorted()
-  let sortedList2 = list2.sorted()
-
-  var result: [(Int, Int)] = []
-  for index in 0..<min(sortedList1.count, sortedList2.count) {
-    result.append((sortedList1[index], sortedList2[index]))
+  enum ParsingError: Error {
+    case invalidInput
   }
-
-  return result
 }
 
-func distance(_ pair: (Int, Int)) -> Int {
-  return abs(pair.0 - pair.1)
+// MARK: - Protocols
+protocol Reconcilable {
+  func reconcile(with other: LocationList) -> [(Int, Int)]
 }
 
-func sumDistances(pairs: [(Int, Int)]) -> Int {
-  var result = 0
-  for pair in pairs {
-    result += distance(pair)
+protocol DistanceCalculable {
+  func distance(from other: LocationList) -> Int
+}
+
+protocol SimilarityCalculable {
+  func similarity(with other: LocationList) -> Int
+}
+
+// MARK: - Default Implementations
+extension LocationList: Reconcilable {
+  func reconcile(with other: LocationList) -> [(Int, Int)] {
+    let sortedSelf = locationIDs.sorted()
+    let sortedOther = other.locationIDs.sorted()
+    return zip(sortedSelf, sortedOther).map { ($0, $1) }
   }
-
-  return result
 }
 
-func part1(input: String) -> Int {
-  let (list1, list2) = parseInput(input: input)
-  let pairs = reconcileList(list1: list1, list2: list2)
-  let sum = sumDistances(pairs: pairs)
-
-  return sum
-}
-
-func part2(input: String) -> Int {
-  let (list1, list2) = parseInput(input: input)
-  var similarity = 0
-
-  for number in list1 {
-    let count = list2.filter { $0 == number }.count
-    similarity += number * count
+extension LocationList: DistanceCalculable {
+  func distance(from other: LocationList) -> Int {
+    let pairs = reconcile(with: other)
+    return pairs.reduce(0) { $0 + abs($1.0 - $1.1) }
   }
+}
 
-  return similarity
+extension LocationList: SimilarityCalculable {
+  func similarity(with other: LocationList) -> Int {
+    let counts = Dictionary(other.locationIDs.map { ($0, 1) }, uniquingKeysWith: +)
+
+    return locationIDs.reduce(0) { result, id in
+      result + (id * (counts[id] ?? 0))
+    }
+  }
+}
+
+// MARK: - Main Functions
+func part1(input: String) throws(LocationList.ParsingError) -> Int {
+  let (list1, list2) = try LocationList.pair(input: input)
+  return list1.distance(from: list2)
+}
+
+func part2(input: String) throws(LocationList.ParsingError) -> Int {
+  let (list1, list2) = try LocationList.pair(input: input)
+  return list1.similarity(with: list2)
 }

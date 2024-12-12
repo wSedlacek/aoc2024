@@ -42,13 +42,13 @@ func readFile(fileName: String) throws -> String {
 
 @Test func samplePart1() async throws {
   let input = try readFile(fileName: "sample.txt")
-  let answer = aoc.part1(input: input)
+  let answer = try aoc.part1(input: input)
   #expect(answer == 11)
 }
 
 @Test func puzzlePart1() async throws {
   let input = try readFile(fileName: "puzzle.txt")
-  let answer = aoc.part1(input: input)
+  let answer = try aoc.part1(input: input)
   #expect(answer == 2_164_381)
 }
 
@@ -82,12 +82,12 @@ func readFile(fileName: String) throws -> String {
 
 @Test func samplePart2() async throws {
   let input = try readFile(fileName: "sample.txt")
-  let answer = aoc.part2(input: input)
+  let answer = try aoc.part2(input: input)
   #expect(answer == 31)
 }
 
 @Test func puzzlePart2() async throws {
   let input = try readFile(fileName: "puzzle.txt")
-  let answer = aoc.part2(input: input)
+  let answer = try aoc.part2(input: input)
   #expect(answer == 20_719_933)
 }
